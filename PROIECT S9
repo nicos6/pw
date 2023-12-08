@@ -346,7 +346,7 @@ void greyscale(char *fisier)
 int main(int argc, char *argv[])
 {
 
-  if (argc != 3)
+  if (argc != 4)
   {
     printf("Numar gresit de argumente\n");
     exit(-1);
@@ -354,6 +354,7 @@ int main(int argc, char *argv[])
 
   char *director_input = argv[1];
   char *director_output = argv[2];
+  char caracter = argv[3][0];
 
   struct stat infos;
   if (stat(director_input, &infos) == -1)
@@ -371,7 +372,7 @@ int main(int argc, char *argv[])
   // deschidem directorul transmis ca parametru
   DIR *director = deschidere_director(director_input);
 
-  int nr=0; //pt a numara propozitiile corecte cu scriptul
+  int nr = 0; // pt a numara propozitiile corecte cu scriptul
   struct dirent *entry;
   while ((entry = readdir(director)) != NULL)
   {
@@ -461,53 +462,34 @@ int main(int argc, char *argv[])
         exit(nrLinii);
       } // pid==0
 
-      // else
-      // { // parinte
-
+      int pid2;
       if (S_ISREG(infos.st_mode) == 1)
       { // daca fisierul este obisnuit
         char *extensie = strchr(path, '.');
 
         if (extensie != NULL && strcmp(extensie, ".bmp") == 0)
         { // daca e bmp file
-          int pid2;
-          if ((pid2 = fork()) < 0)
-          {
+          
+          if ((pid2 = fork()) < 0){
             perror("Eroare");
             exit(-1);
           }
 
           if (pid2 == 0)
           {
-            close(pfd1[1]); /* inchidem capatul de scriere */
-            close(pfd1[0]); /* inchidem capatul de citire; */
-            close(pfd2[1]); /* inchidem capatul de scriere */
-            close(pfd2[0]); /* inchidem capatul de citire; */
+            close(pfd1[1]);
+            close(pfd1[0]);
+            close(pfd2[1]);
+            close(pfd2[0]);
             greyscale(path);
             exit(0);
-          }
-          else
-          {
-            int status2;
-            // asteptam anume statusul acestui proces, sa nu se incurce cu status
-            if (waitpid(pid2, &status2, 0) == -1)
-            {
-              perror("Eroare waitpid\n");
-              exit(-1);
-            }
-
-            if (WIFEXITED(status2))
-            {
-              printf("Procesul copil greyscale cu pid %d s-a incheiat cu status=%d\n", pid2, WEXITSTATUS(status2));
-            }
           }
         }
 
         else
         { // fisier obisnuit care nu e bmp
           int pid3;
-          if ((pid3 = fork()) < 0)
-          {
+          if ((pid3 = fork()) < 0){
             perror("Eroare");
             exit(-1);
           }
@@ -519,7 +501,7 @@ int main(int argc, char *argv[])
 
             dup2(pfd1[0], 0);
             dup2(pfd2[1], 1);
-            execl("./script.sh", "script.sh", "a", NULL);
+            execl("./script.sh", "script.sh", &caracter, NULL);
             perror("Eroare execl pid3\n");
             exit(-1);
           }
@@ -532,23 +514,22 @@ int main(int argc, char *argv[])
             char string[100];
             stream = fdopen(pfd2[0], "r");
             if (fscanf(stream, "%s", string) == 1){
-              nr+= atoi(string);
+              nr += atoi(string);
             }
             else{
               perror("Eroare la citirea din pipe în copil");
             }
 
-            close(pfd2[0]);
+            close(pfd2[0]); //inchidem si capatul de citire
 
             int status3;
-            // asteptam anume statusul acestui proces, sa nu se incurce cu status
             if (waitpid(pid3, &status3, 0) == -1){
               perror("Eroare waitpid\n");
               exit(-1);
             }
 
             if (WIFEXITED(status3)){
-              printf("Procesul copil fisier obisnuit rulare script cu pid %d s-a incheiat cu status=%d\n", pid3, WEXITSTATUS(status3));
+              printf("Procesul copil cu pid3 %d s-a incheiat cu status=%d\n", pid3, WEXITSTATUS(status3));
             }
           }
         }
@@ -561,7 +542,7 @@ int main(int argc, char *argv[])
       }
 
       if (WIFEXITED(status)){
-        printf("Procesul copil %d s-a incheiat cu status=%d\n", pid, WEXITSTATUS(status));
+        printf("Procesul copil cu pid1 %d s-a incheiat cu status=%d\n", pid, WEXITSTATUS(status));
       }
       else if (WIFSIGNALED(status)){
         printf("killed by signal %d\n", WTERMSIG(status));
@@ -573,11 +554,22 @@ int main(int argc, char *argv[])
         printf("continued\n");
       }
 
-      //} parinte
-    } // if its not . or ..
-  }   // while
+      if(pid2 > 0){
+        int status2;
+        if (waitpid(pid2, &status2, 0) == -1){
+          perror("Eroare waitpid\n");
+          exit(-1);
+        }
 
-  printf("Au fost identificate in total %d propozitii corecte care contin caracterul %c\n", nr, 'a');
+        if (WIFEXITED(status2)) {
+          printf("Procesul copil cu pid2 %d s-a incheiat cu status=%d\n", pid2, WEXITSTATUS(status2));
+        }
+      }
+
+    }// if its not . or ..
+  }// while
+
+  printf("Au fost identificate in total %d propozitii corecte care contin caracterul %c\n", nr, caracter);
 
   closedir(director);
   return 0;
